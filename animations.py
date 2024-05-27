@@ -1,11 +1,15 @@
 import time
+'''
 import board
 import neopixel
+'''
 import random
 import math
 
 import time
+'''
 import neopixel
+'''
 
 gamma8 = [0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
@@ -52,11 +56,30 @@ class ColorRef:
     def set_color(self, color=(255, 241, 224)):
         self.color = color
 
+def accept_any(led, inner_index, outer_index):
+    return True
+
+class LEDGroup:
+
+    def __init__(self, *args, **kwargs):
+        self.lists = [*args]
+        self.filter = accept_any if 'filter' not in kwargs else kwargs['filter']
+
+    def iterate_leds(self):
+        outer_index = 0 # the index across lists
+        for led_list in self.lists:
+            inner_index = 0 # the index within a single list
+            for led in led_list.leds:
+                if self.filter(led, inner_index, outer_index):
+                    yield led, inner_index, outer_index
+                inner_index += 1
+                outer_index += 1
+
 class BaseAnimation:
-    def __init__(self, duration=0, frame_length=0.01, led_list=None, base_color=ColorRef((25, 25, 25)), after_animation_color=ColorRef((25, 25, 25))):
+    def __init__(self, led_group:LEDGroup, duration=0, frame_length=0.01, base_color=ColorRef((25, 25, 25)), after_animation_color=ColorRef((25, 25, 25))):
         self.duration = duration
         self.frame_length = frame_length
-        self.led_list = led_list if led_list is not None else []
+        self.led_group = led_group
         self.neoPixel_objects = []
         self.base_color = base_color
         self.start_time = None
@@ -87,37 +110,13 @@ class BaseAnimation:
     def animate(self):
         raise NotImplementedError("Subclasses should implement this method")
 
-    def add_led(self, neopixel_obj, pixel_num):
-        if isinstance(neopixel_obj, neopixel.NeoPixel):
-            self.led_list.append((neopixel_obj, pixel_num))
-            if neopixel_obj not in self.neoPixel_objects:
-                self.neoPixel_objects.append(neopixel_obj)
-        else:
-            raise TypeError("neopixel_obj must be an instance of neopixel.NeoPixel")
-
-    def remove_led(self, neopixel_obj, pixel_num):
-        if (neopixel_obj, pixel_num) in self.led_list:
-            self.led_list.remove((neopixel_obj, pixel_num))
-            # Remove neopixel_obj from neoPixel_objects if it has no more associated LEDs
-            if all(neopixel_obj != obj for obj, _ in self.led_list):
-                self.neoPixel_objects.remove(neopixel_obj)
-
-    def add_led_list(self, led_list):
-        for neopixel_obj, pixel_num in led_list:
-            self.add_led(neopixel_obj, pixel_num)
-
-    def remove_led_list(self, led_list):
-        for item in led_list:
-            self.remove_led(item)
-
 class Chase(BaseAnimation):
-    def __init__(self, duration = 0, frame_length = 0.5, total_chase_length = 3, chase_leds_on = 1, led_lists=None, base_color=ColorRef((255, 255, 255)), after_animation_color=ColorRef((255, 255, 255)), off_color=ColorRef((0, 0, 0))): #TODO align the chase versions
-        super().__init__(duration, frame_length, None, base_color, after_animation_color) #we need to use lists of LEDs, not a list of LEDs
+    def __init__(self, led_group:LEDGroup, duration = 0, frame_length = 0.5, total_chase_length = 3, chase_leds_on = 1, base_color=ColorRef((255, 255, 255)), after_animation_color=ColorRef((255, 255, 255)), off_color=ColorRef((0, 0, 0))): #TODO align the chase versions
+        super().__init__(led_group, duration, frame_length, base_color, after_animation_color) #we need to use lists of LEDs, not a list of LEDs
         self.total_chase_length = total_chase_length
         self.chase_leds_on = chase_leds_on
-        self.led_lists = led_lists if led_lists is not None else []
         self.off_color = off_color
-        self.current_positions = [0] * len(self.led_lists)
+        self.current_positions = [0] * len(self.led_group.lists)
         self.neoPixel_objects = list()
         self.base_color = base_color
         self.after_animation_color = after_animation_color
@@ -163,22 +162,9 @@ class Chase(BaseAnimation):
             for string in self.neoPixel_objects:
                 string.show()
 
-
-
-    def add_led_list(self, led_list):
-        for led in led_list:
-            if not isinstance(led[0], neopixel.NeoPixel):
-                raise TypeError("Each item in led_list must be a tuple (neopixel.NeoPixel, pixel_num)")
-            else:
-                if not led[0] in self.neoPixel_objects:
-                    self.neoPixel_objects.append(led[0])
-        self.led_lists.append(led_list)
-        self.current_positions.append(0)
-
-
 class Fade(BaseAnimation):
-    def __init__(self, duration, frame_length, fade_duration, led_list=None, start_color=ColorRef((255, 255, 255)), after_animation_color=ColorRef((255, 255, 255)), end_color=ColorRef((0, 0, 0))):
-        super().__init__(duration, frame_length, led_list, start_color, after_animation_color)
+    def __init__(self, led_group:LEDGroup, duration, frame_length, fade_duration, start_color=ColorRef((255, 255, 255)), after_animation_color=ColorRef((255, 255, 255)), end_color=ColorRef((0, 0, 0))):
+        super().__init__(led_group, duration, frame_length, start_color, after_animation_color)
         self.fade_duration = fade_duration
         self.end_color = end_color
 
@@ -215,8 +201,8 @@ class Fade(BaseAnimation):
 
 
 class Flicker(BaseAnimation):
-    def __init__(self, duration=0, frame_length=0.025, flicker_off_range=0.5, max_flicker_brightness=0.8, led_list=None, base_color=ColorRef((255, 255, 255)), after_animation_color=ColorRef((255, 255, 255)), flicker_to_color=ColorRef((0, 0, 0))):
-        super().__init__(duration, frame_length, led_list, base_color, after_animation_color)
+    def __init__(self, led_group:LEDGroup, duration=0, frame_length=0.025, flicker_off_range=0.5, max_flicker_brightness=0.8, base_color=ColorRef((255, 255, 255)), after_animation_color=ColorRef((255, 255, 255)), flicker_to_color=ColorRef((0, 0, 0))):
+        super().__init__(led_group, duration, frame_length, base_color, after_animation_color)
         print(self.base_color)
         self.flicker_off_range = flicker_off_range
         self.max_flicker_brightness = max_flicker_brightness
@@ -247,18 +233,18 @@ class Flicker(BaseAnimation):
 
 class IndividualFlicker(BaseAnimation):
     def __init__(self,
+            led_group:LEDGroup,
             duration=2,
             frame_length=0.025,
             flicker_off_range=0.5,
             max_flicker_brightness=0.8,
-            led_list=None,
             base_color=ColorRef((255, 255, 255)), 
             after_animation_color=ColorRef((255, 255, 255)), 
             flicker_to_color=ColorRef((0, 0, 0)),
             min_time_before_add_led = 2,
             max_time_before_add_led = 10
             ):
-        super().__init__(duration, frame_length, led_list, base_color, after_animation_color)
+        super().__init__(led_group, duration, frame_length, base_color, after_animation_color)
         print(self.base_color)
         self.flicker_off_range = flicker_off_range
         self.max_flicker_brightness = max_flicker_brightness
@@ -309,13 +295,12 @@ class IndividualFlicker(BaseAnimation):
                 string.show()
 
 class ChaseWithPartial2(BaseAnimation):
-    def __init__(self, duration = 0, frame_length = 0.025, move_rate_led_per_sec = 0.5, total_chase_length = 3, chase_leds_on = 1, led_lists=None, base_color=ColorRef((255, 255, 255)), after_animation_color=ColorRef((255, 255, 255)), off_color=ColorRef((0, 0, 0))):
-        super().__init__(duration, frame_length, None, base_color, after_animation_color) #we need to use lists of LEDs, not a list of LEDs
+    def __init__(self, led_group:LEDGroup, duration = 0, frame_length = 0.025, move_rate_led_per_sec = 0.5, total_chase_length = 3, chase_leds_on = 1, base_color=ColorRef((255, 255, 255)), after_animation_color=ColorRef((255, 255, 255)), off_color=ColorRef((0, 0, 0))):
+        super().__init__(led_group, duration, frame_length, base_color, after_animation_color) #we need to use lists of LEDs, not a list of LEDs
         self.total_chase_length = total_chase_length
         self.chase_leds_on = chase_leds_on
-        self.led_lists = led_lists if led_lists is not None else []
         self.off_color = off_color
-        self.current_positions = [0.0] * len(self.led_lists)
+        self.current_positions = [0.0] * len(self.led_group.lists)
         self.neoPixel_objects = list()
         self.move_rate = move_rate_led_per_sec
         self.segment_start = 0.0
@@ -393,23 +378,9 @@ class ChaseWithPartial2(BaseAnimation):
             for string in self.neoPixel_objects:
                 string.show()
 
-
-
-
-    def add_led_list(self, led_list):
-        for led in led_list:
-            if not isinstance(led[0], neopixel.NeoPixel):
-                raise TypeError("Each item in led_list must be a tuple (neopixel.NeoPixel, pixel_num)")
-            else:
-                if not led[0] in self.neoPixel_objects:
-                    self.neoPixel_objects.append(led[0])
-        self.led_lists.append(led_list)
-        self.current_positions.append(0.0)
-
-
 class Breathe(BaseAnimation):
-    def __init__(self, duration = 0, frame_length = 0.025, breath_rate = 2, led_list=None, base_color=ColorRef((255, 255, 255)), after_animation_color=ColorRef((255, 255, 255)), low_intensity=0.2):
-        super().__init__(duration, frame_length, led_list, base_color, after_animation_color) #we need to use lists of LEDs, not a list of LEDs
+    def __init__(self, led_group:LEDGroup, duration = 0, frame_length = 0.025, breath_rate = 2, base_color=ColorRef((255, 255, 255)), after_animation_color=ColorRef((255, 255, 255)), low_intensity=0.2):
+        super().__init__(led_group, duration, frame_length, base_color, after_animation_color) #we need to use lists of LEDs, not a list of LEDs
         self.low_intensity = low_intensity
         self.breath_rate = breath_rate
         self.segment_start = 0.0
@@ -445,8 +416,8 @@ class Breathe(BaseAnimation):
 
 
 class Solid(BaseAnimation):
-    def __init__(self, duration=0, frame_length=1, led_list=None, base_color=ColorRef((255, 255, 255)), after_animation_color=ColorRef((255, 255, 255))):
-        super().__init__(duration, frame_length, led_list, base_color, after_animation_color)
+    def __init__(self, led_group:LEDGroup, duration=0, frame_length=1, base_color=ColorRef((255, 255, 255)), after_animation_color=ColorRef((255, 255, 255))):
+        super().__init__(led_group, duration, frame_length, base_color, after_animation_color)
 
     def animate(self):
         # Do I want to actually track duration here?
@@ -465,9 +436,11 @@ class Solid(BaseAnimation):
                 string.show()
 
 class LEDList:
-    def __init__(self):
+    def __init__(self, color):
         self.leds = []
         self.strands = []
+        self.base_color = color
+        self.current_color = ColorRef(color.get_color())
 
     def add_led(self, neopixel_obj, led_number):
         """Add a single LED."""

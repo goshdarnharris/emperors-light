@@ -1,4 +1,5 @@
-``import time
+'''
+import time
 import board
 import neopixel
 import random
@@ -9,56 +10,34 @@ import adafruit_minimqtt.adafruit_minimqtt as MQTT
 import gc
 import adafruit_logging as logging
 # logger = logging.getLogger('test')
+'''
+
+from animation import *
 
 #auto_write needs to be false for this to perform fast animations
 animations = list()
 
+'''
 onBoardPixel = neopixel.NeoPixel(board.NEOPIXEL, 1)
 pixelString = neopixel.NeoPixel(board.A4, 115, auto_write=False) #TODO consider how best to sync show if needed
 teleporterPixelString = neopixel.NeoPixel(board.A5, 115, auto_write=False) #TODO consider how best to sync show if needed
 infintyPixelString = neopixel.NeoPixel(board.A3, 64, auto_write=False,pixel_order=neopixel.RGBW) #TODO consider how best to sync show if needed
+'''
+pixelString = [x for x in range(115)]
+teleporterPixelString = [x for x in range(115)]
+infinityPixelString = [x for x in range(64)]
 
-infiniteChase = list()#LEDList()
-
-for i in range(2):
-    infiniteChase.append(LEDList())
-    for j in range(0,8):
-        infiniteChase[-1].add_led(infintyPixelString, i*32+j)
-    infiniteChase.append(LEDList())
-    for j in range(0,8):
-        infiniteChase[-1].add_led(infintyPixelString, (7+8+(i*32))-(j))
-    infiniteChase.append(LEDList())
-    for j in range(0,8):
-        infiniteChase[-1].add_led(infintyPixelString, (15+(i*32))+(j))
-    infiniteChase.append(LEDList())
-    for j in range(0,8):
-        infiniteChase[-1].add_led(infintyPixelString, 23+8+i*32-j)
-
-infinity_color_1 = ColorRef((64, 60, 57))
-# infiniteChaseAnimation = Chase(frame_length=0.1,total_chase_length=10,chase_leds_on=2,base_color=infinity_color_1)
-infiniteChaseAnimation = ChaseWithPartial2(frame_length=0.1,total_chase_length=10,move_rate_led_per_sec=8,chase_leds_on=2,base_color=infinity_color_1)
-for i in range(8):
-    infiniteChaseAnimation.add_led_list(infiniteChase[i].get_leds())
-animations.append(infiniteChaseAnimation)
-infiniteChaseAnimation.start()
-
-
-front_LEDs = LEDList()
-for i in range(0,115):
-    front_LEDs.add_led(pixelString, i)
-front_LEDs_base_color = (10,0,0)
-front_LEDs_off_color = (0,0,0)
-# front_LEDs.fill(front_LEDs_base_color)
-# front_LEDs.fill((1,0,0))
-i = 0
-# print(len(b))
-# while True:
-#     print(i)
-#     front_LEDs.fill((b[i],0,0))
-#     i = (i+1)%256
-#     time.sleep(0.01)
+def create_span(pixels, color, count, offset:int=0, reverse:bool=False):
+    lower_bound = 0 if not reverse else count - 1
+    upper_bound = count if not reverse else -1
+    step = 1 if not reverse else -1
+    span = LEDList(color)
+    for i in range(lower_bound, upper_bound, step):
+        span.add_led(pixels, offset + i)
+    return span
 
 # colors we'll use as color objects to make it easier to change
+infinity_color_1 = ColorRef((64, 60, 57))
 teleporter_color_1 = ColorRef((0,40,80))
 teleporter_color_outer = ColorRef((80,0,0))
 teleporter_color_inner = ColorRef((80,20,0))
@@ -68,22 +47,67 @@ teleporter_color_Blue = ColorRef((0,40,80))
 teleporter_color_Red = ColorRef((80,0,0))
 teleporter_color_2 = ColorRef((0,0,0))
 teleporter_color_3 = ColorRef((80,20,0))
+front_LEDS_base_color = ColorRef((10,0,0))
+front_LEDS_off_color = ColorRef((0,0,0))
+
+infiniteDrop1Offset = 0
+infiniteDrop1Strand1 = create_span(infinityPixelString, infinity_color_1, 8, infiniteDrop1Offset + 8 * 0)
+infiniteDrop1Strand2 = create_span(infinityPixelString, infinity_color_1, 8, infiniteDrop1Offset + 8 * 1, reverse=True)
+infiniteDrop1Strand3 = create_span(infinityPixelString, infinity_color_1, 8, infiniteDrop1Offset + 8 * 2)
+infiniteDrop1Strand4 = create_span(infinityPixelString, infinity_color_1, 8, infiniteDrop1Offset + 8 * 3, reverse=True)
+
+infiniteDrop2Offset = 32
+infiniteDrop2Strand1 = create_span(infinityPixelString, infinity_color_1, 8, infiniteDrop2Offset + 8 * 0)
+infiniteDrop2Strand2 = create_span(infinityPixelString, infinity_color_1, 8, infiniteDrop2Offset + 8 * 1, reverse=True)
+infiniteDrop2Strand3 = create_span(infinityPixelString, infinity_color_1, 8, infiniteDrop2Offset + 8 * 2)
+infiniteDrop2Strand4 = create_span(infinityPixelString, infinity_color_1, 8, infiniteDrop2Offset + 8 * 3, reverse=True)
+
+# create composition of the individual strands in the infinite drop landmark
+infiniteDrop1 = LEDGroup(infiniteDrop1Strand1, infiniteDrop1Strand2, infiniteDrop1Strand3, infiniteDrop1Strand4)
+infiniteDrop2 = LEDGroup(infiniteDrop2Strand1, infiniteDrop2Strand2, infiniteDrop2Strand3, infiniteDrop2Strand4)
+# create composition of both infinite drop landmarks
+infiniteDropBoth = LEDGroup(*infiniteDrop1.lists, *infiniteDrop2.lists)
+
+#infiniteChaseAnimation = Chase(infiniteDropBoth, frame_length=0.1, total_chase_length=10, chase_leds_on=2, base_color=infinity_color_1)
+infiniteChaseAnimation = ChaseWithPartial2(infiniteDropBoth, frame_length=0.1, total_chase_length=10, move_rate_led_per_sec=8, chase_leds_on=2, base_color=infinity_color_1)
+animations.append(infiniteChaseAnimation)
+infiniteChaseAnimation.start()
+
+front_LEDS = create_span(pixelString, front_LEDS_base_color, 115)
 
 # teleporter pad lists
 
-all_teleporter_pad_leds = LEDList()
-for i in range(0,115):
-    all_teleporter_pad_leds.add_led(teleporterPixelString, i)
-    # teleporterPixelString[i] = teleporter_color_1.get_color()
+# front_LEDs.fill(front_LEDs_base_color)
+# front_LEDs.fill((1,0,0))
+# i = 0
+# print(len(b))
+# while True:
+#     print(i)
+#     front_LEDs.fill((b[i],0,0))
+#     i = (i+1)%256
+#     time.sleep(0.01)
+
+teleporter_pad_leds_1 = create_span(teleporterPixelString, teleporter_color_1, 23, 23 * 0)
+teleporter_pad_leds_2 = create_span(teleporterPixelString, teleporter_color_1, 23, 23 * 1)
+teleporter_pad_leds_3 = create_span(teleporterPixelString, teleporter_color_1, 23, 23 * 2)
+teleporter_pad_leds_4 = create_span(teleporterPixelString, teleporter_color_1, 23, 23 * 3)
+teleporter_pad_leds_5 = create_span(teleporterPixelString, teleporter_color_1, 23, 23 * 4)
+
+def even_leds(led, inner_index, outer_index):
+    return outer_index % 2 == 0
+def odd_leds(led, inner_index, outer_index):
+    return outer_index % 2 == 1
+
+all_teleporter_pad_leds = LEDGroup(teleporter_pad_leds_1, teleporter_pad_leds_2, teleporter_pad_leds_3, teleporter_pad_leds_4, teleporter_pad_leds_5)
+even_teleporter_pad_leds = LEDGroup(*all_teleporter_pad_leds.lists, filter=even_leds)
+odd_teleporter_pad_leds = LEDGroup(*all_teleporter_pad_leds.lists, filter=odd_leds)
+
 teleporterPixelString.show()
 
-even_teleporter_pad_leds = LEDList()
-for i in range(0,115,2):
-    even_teleporter_pad_leds.add_led(teleporterPixelString, i)
+for led, inner_index, outer_index in odd_teleporter_pad_leds.iterate_leds():
+    print(str(led[1]), inner_index, outer_index)
 
-odd_teleporter_pad_leds = LEDList()
-for i in range(1,115,2):
-    odd_teleporter_pad_leds.add_led(teleporterPixelString, i)
+exit() # TEMP
 
 outer_ring_teleporter_pad_leds = LEDList()
 for i in range(0,115,23):
@@ -109,19 +133,20 @@ for i in range(5):
     teleporter_pad_chase_lists[-1].add_led(teleporterPixelString,0+i*23)
     teleporter_pad_chase_lists[-1].add_led(teleporterPixelString,17+i*23)
     teleporter_pad_chase_lists[-1].add_led(teleporterPixelString,16+i*23)
-``
 #the second have 2
 for i in range(5):
     for j in range(5):
         teleporter_pad_chase_lists.append(LEDList())
         teleporter_pad_chase_lists[-1].add_led(teleporterPixelString,1+j+i*23)
         teleporter_pad_chase_lists[-1].add_led(teleporterPixelString,18+j+i*23)
-
 #the third set is just hte remaining outer leds
 for i in range(5):
     for j in range(10):
         teleporter_pad_chase_lists.append(LEDList())
         teleporter_pad_chase_lists[-1].add_led(teleporterPixelString,6+j+i*23)
+
+
+
 
 #setup chasing inwards (or outwards) #todo make toggling chase direction easy
 telporter_pads_inward_animation = Chase(frame_length=0.1,total_chase_length=3,chase_leds_on=1,base_color=teleporter_color_1,off_color=teleporter_color_2,after_animation_color=teleporter_color_1)
